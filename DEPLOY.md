@@ -54,8 +54,19 @@
    - **Environment**: `Node`
    - **Build Command**: `npm install && npm run build`
    - **Start Command**: `npm start`
-5. Ajoutez les variables d'environnement
+   - **Node Version**: `20` (ou la version que vous utilisez)
+5. Ajoutez les variables d'environnement :
+   ```
+   MONGODB_URI=votre_uri
+   MONGODB_DB_NAME=horizon-ai
+   OPENROUTER_API_KEY=votre_cle
+   JWT_SECRET=votre_cle_secrete
+   JWT_EXPIRES_IN=7d
+   APP_URL=https://votre-backend.onrender.com
+   ```
 6. Déployez !
+
+**Note**: Le fichier `render.yaml` à la racine peut être utilisé pour automatiser la configuration.
 
 ---
 

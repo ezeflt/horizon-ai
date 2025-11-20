@@ -68,7 +68,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api', analysisRoutes);
 
 // Route de santé
-app.get('/health', (req, res) => {
+app.get('/health', (req: express.Request, res: express.Response) => {
   res.json({ 
     status: isInitialized ? 'ok' : 'initializing',
     message: isInitialized ? 'Horizon AI API is running' : 'Horizon AI API is initializing',

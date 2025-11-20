@@ -1,5 +1,4 @@
 import jwt, { SignOptions } from 'jsonwebtoken';
-import type { StringValue } from 'ms';
 import bcrypt from 'bcryptjs';
 import { MongoClient, Db, Collection } from 'mongodb';
 
@@ -37,8 +36,8 @@ export const generateToken = (userId: string): string => {
     throw new Error('JWT_SECRET n\'est pas définie dans les variables d\'environnement');
   }
 
-  const expiresIn = (process.env.JWT_EXPIRES_IN || '7d') as StringValue | number;
-  const options: SignOptions = { expiresIn };
+  const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+  const options: SignOptions = { expiresIn: expiresIn as string | number };
   
   return jwt.sign(
     { userId: userId },
