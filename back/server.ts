@@ -3,6 +3,9 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import analysisRoutes from './src/routes/analysis.route';
 import authRoutes from './src/routes/auth.route';
+import caRoutes from './src/routes/ca.route';
+import employeesRoutes from './src/routes/employees.route';
+import transactionsRoutes from './src/routes/transactions.route';
 import { initializeMongoDB, closeMongoDB, getDatabase } from './src/services/database.service';
 import { initializeAuthService } from './src/services/auth.service';
 
@@ -66,6 +69,9 @@ app.use('/api', (req, res, next) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api', analysisRoutes);
+app.use('/api/ca', caRoutes);
+app.use('/api/employees', employeesRoutes);
+app.use('/api/transactions', transactionsRoutes);
 
 // Route de santé
 app.get('/health', (req: express.Request, res: express.Response) => {

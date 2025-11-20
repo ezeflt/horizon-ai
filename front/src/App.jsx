@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const HorizonAIChat = () => {
+const HorizonAI = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showLogin, setShowLogin] = useState(true);
@@ -11,9 +11,21 @@ const HorizonAIChat = () => {
   const [token, setToken] = useState('');
   const [userId, setUserId] = useState('');
   
-  const [messages, setMessages] = useState([]);
-  const [inputMessage, setInputMessage] = useState('');
-  const [isSending, setIsSending] = useState(false);
+  // États pour les données
+  const [monthlyCA, setMonthlyCA] = useState([]);
+  const [totalCA, setTotalCA] = useState(0);
+  const [employees, setEmployees] = useState([]);
+  const [employer, setEmployer] = useState(null);
+  const [loadingData, setLoadingData] = useState(false);
+  
+  // Constante pour les noms des mois
+  const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+  
+  // États pour l'analyse IA
+  const [analysisQuery, setAnalysisQuery] = useState('');
+  const [analysisResult, setAnalysisResult] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isChatMinimized, setIsChatMinimized] = useState(false);
   const messagesEndRef = useRef(null);
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -28,35 +40,62 @@ const HorizonAIChat = () => {
       setUserId(savedUserId);
       setIsAuthenticated(true);
       setShowLogin(false);
-      loadChatHistory(savedToken);
+      loadData(savedToken);
     }
     setIsLoading(false);
   }, []);
 
-  // Scroll vers le bas quand de nouveaux messages arrivent
+  // Scroll vers le bas pour l'analyse IA
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [analysisResult]);
 
-  // Charger l'historique du chat
-  const loadChatHistory = async (authToken) => {
+  // Charger les données
+  const loadData = async (authToken) => {
+    setLoadingData(true);
     try {
-      const response = await fetch(`${apiUrl}/api/chat/history`, {
-        headers: {
-          'Authorization': `Bearer ${authToken}`
-        }
+      // Charger le CA
+      const currentYear = new Date().getFullYear();
+      const caRes = await fetch(`${apiUrl}/api/ca?year=${currentYear}`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
       });
+      if (caRes.ok) {
+        const caData = await caRes.json();
+        if (caData.success) {
+          setMonthlyCA(caData.data.monthlyCA);
+          setTotalCA(caData.data.totalCA);
+        }
+      }
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.data.messages) {
-          setMessages(data.data.messages);
+      // Charger les employés
+      const employeesRes = await fetch(`${apiUrl}/api/employees`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (employeesRes.ok) {
+        const data = await employeesRes.json();
+        if (data.success) {
+          setEmployees(data.data.employees);
+        }
+      }
+
+      // Charger l'employeur
+      const employerRes = await fetch(`${apiUrl}/api/employees/employer`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      if (employerRes.ok) {
+        const data = await employerRes.json();
+        if (data.success) {
+          setEmployer(data.data.employer);
         }
       }
     } catch (error) {
-      console.error('Erreur lors du chargement de l\'historique:', error);
+      console.error('Erreur lors du chargement des données:', error);
+    } finally {
+      setLoadingData(false);
     }
   };
+
+
 
   // Gestion de l'authentification
   const handleAuth = async (e) => {
@@ -67,9 +106,7 @@ const HorizonAIChat = () => {
       const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
       const response = await fetch(`${apiUrl}${endpoint}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
 
@@ -89,27 +126,22 @@ const HorizonAIChat = () => {
         localStorage.setItem('horizon_ai_token', newToken);
         localStorage.setItem('horizon_ai_userId', newUserId);
         
-        await loadChatHistory(newToken);
+        await loadData(newToken);
       }
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : 'Une erreur est survenue');
     }
   };
 
-  // Envoyer un message
-  const handleSendMessage = async (e) => {
+
+  // Analyser avec IA
+  const handleAnalyze = async (e) => {
     e.preventDefault();
-    
-    if (!inputMessage.trim() || isSending) return;
+    if (!analysisQuery.trim() || isAnalyzing) return;
 
-    const userMessage = {
-      role: 'user',
-      content: inputMessage.trim()
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setInputMessage('');
-    setIsSending(true);
+    setIsAnalyzing(true);
+    const userQuery = analysisQuery.trim();
+    setAnalysisQuery('');
 
     try {
       const response = await fetch(`${apiUrl}/api/chat/message`, {
@@ -118,34 +150,28 @@ const HorizonAIChat = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ message: userMessage.content })
+        body: JSON.stringify({ message: userQuery })
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Erreur lors de l\'envoi du message');
+        throw new Error(data.error || 'Erreur lors de l\'analyse');
       }
 
       if (data.success && data.data) {
-        const assistantMessage = {
-          role: 'assistant',
-          content: data.data.response,
-          timestamp: data.data.timestamp
-        };
-        setMessages(prev => [...prev, assistantMessage]);
+        setAnalysisResult(prev => {
+          const separator = prev ? '\n\n' : '';
+          return prev + `${separator}Vous: ${userQuery}\n\nIA: ${data.data.response}`;
+        });
       }
     } catch (err) {
-      console.error('Erreur:', err);
-      const errorMessage = {
-        role: 'assistant',
-        content: `Erreur: ${err instanceof Error ? err.message : 'Une erreur est survenue'}`
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      setAnalysisResult(prev => prev + `\n\nErreur: ${err instanceof Error ? err.message : 'Une erreur est survenue'}`);
     } finally {
-      setIsSending(false);
+      setIsAnalyzing(false);
     }
   };
+
 
   // Déconnexion
   const handleLogout = () => {
@@ -155,12 +181,16 @@ const HorizonAIChat = () => {
     setUserId('');
     setIsAuthenticated(false);
     setShowLogin(true);
-    setMessages([]);
+    setMonthlyCA([]);
+    setTotalCA(0);
+    setEmployees([]);
+    setEmployer(null);
+    setAnalysisResult('');
   };
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Chargement...</p>
@@ -169,14 +199,19 @@ const HorizonAIChat = () => {
     );
   }
 
-  // Page de login/register
+  // Page de login
   if (showLogin || !isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
+      <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-blue-900 to-indigo-900 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-10 w-full max-w-md">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">🚀 Horizon AI</h1>
-            <p className="text-gray-600">Chat IA avec authentification</p>
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-indigo-600 to-blue-600 rounded-2xl mb-4">
+              <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Horizon AI</h1>
+            <p className="text-gray-600">Analyse du Chiffre d'Affaires</p>
           </div>
 
           <form onSubmit={handleAuth} className="space-y-6">
@@ -191,7 +226,7 @@ const HorizonAIChat = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                placeholder="votre@email.com"
+                placeholder="entreprise@exemple.com"
               />
             </div>
 
@@ -212,14 +247,14 @@ const HorizonAIChat = () => {
             </div>
 
             {loginError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-sm text-red-800">{loginError}</p>
               </div>
             )}
 
             <button
               type="submit"
-              className="w-full py-3 px-6 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors"
+              className="w-full py-3 px-6 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-blue-700 transition-all"
             >
               {isRegister ? 'Créer un compte' : 'Se connecter'}
             </button>
@@ -231,11 +266,9 @@ const HorizonAIChat = () => {
                 setIsRegister(!isRegister);
                 setLoginError('');
               }}
-              className="text-sm text-indigo-600 hover:text-indigo-700"
+              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
             >
-              {isRegister 
-                ? 'Déjà un compte ? Se connecter' 
-                : 'Pas de compte ? Créer un compte'}
+              {isRegister ? 'Déjà un compte ? Se connecter' : 'Créer un compte'}
             </button>
           </div>
         </div>
@@ -243,18 +276,18 @@ const HorizonAIChat = () => {
     );
   }
 
-  // Interface de chat
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">🚀 Horizon AI Chat</h1>
-            <p className="text-sm text-gray-600">Assistant IA intelligent</p>
+            <h1 className="text-2xl font-bold text-gray-900">🚀 Horizon AI</h1>
+            <p className="text-sm text-gray-600">Analyse du Chiffre d'Affaires</p>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">User: {userId.substring(0, 8)}...</span>
+            <span className="text-sm text-gray-600">{email}</span>
             <button
               onClick={handleLogout}
               className="px-4 py-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
@@ -265,73 +298,280 @@ const HorizonAIChat = () => {
         </div>
       </header>
 
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto max-w-4xl w-full mx-auto px-4 py-6">
-        <div className="space-y-4">
-          {messages.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="text-6xl mb-4">💬</div>
-              <h2 className="text-xl font-semibold text-gray-700 mb-2">Commencez une conversation</h2>
-              <p className="text-gray-500">Posez une question et l'IA vous répondra</p>
-            </div>
-          ) : (
-            messages.map((msg, index) => (
-              <div
-                key={index}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+      {/* Chat IA fixé en bas à droite */}
+      <div className="fixed bottom-6 right-6 z-50">
+        {isChatMinimized ? (
+          // Chat minimisé - Bouton pour ouvrir
+          <button
+            onClick={() => setIsChatMinimized(false)}
+            className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-full w-16 h-16 shadow-2xl flex items-center justify-center hover:from-indigo-700 hover:to-blue-700 transition-all"
+            title="Ouvrir le chat IA"
+          >
+            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            </svg>
+          </button>
+        ) : (
+          // Chat ouvert
+          <div className={`bg-white rounded-2xl shadow-2xl border border-gray-200 transition-all duration-300 ${analysisResult ? 'w-96 h-[600px]' : 'w-96 h-[500px]'} flex flex-col`}>
+            {/* Header du chat */}
+            <div className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white p-4 rounded-t-2xl flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-lg">🤖 Chat IA</h3>
+                  <p className="text-xs text-white/80">Analyse du CA</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsChatMinimized(true)}
+                className="text-white/80 hover:text-white hover:bg-white/20 rounded-lg p-2 transition-colors"
+                title="Minimiser le chat"
               >
-                <div
-                  className={`max-w-[80%] rounded-lg px-4 py-3 ${
-                    msg.role === 'user'
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-white text-gray-800 shadow-sm border border-gray-200'
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                </div>
-              </div>
-            ))
-          )}
-          {isSending && (
-            <div className="flex justify-start">
-              <div className="bg-white rounded-lg px-4 py-3 shadow-sm border border-gray-200">
-                <div className="flex space-x-2">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-                </div>
-              </div>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                </svg>
+              </button>
             </div>
-          )}
-          <div ref={messagesEndRef} />
+
+          {/* Messages du chat */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+            {!analysisResult && !isAnalyzing && (
+              <div className="text-center py-8 text-gray-500">
+                <p className="text-sm">Posez une question sur votre CA, vos employés ou votre entreprise</p>
+              </div>
+            )}
+
+            {analysisResult && (
+              <div className="space-y-4">
+                {analysisResult.split(/\n\n(?=Vous:|IA:|Erreur:)/).map((part, index) => {
+                  if (part.trim() === '') return null;
+                  const isUser = part.startsWith('Vous:');
+                  const isError = part.startsWith('Erreur:');
+                  const isIA = part.startsWith('IA:');
+                  
+                  let content = part;
+                  if (isUser) {
+                    content = part.replace(/^Vous:\s*/, '').trim();
+                    return (
+                      <div key={index} className="flex justify-end">
+                        <div className="max-w-[80%] bg-indigo-600 text-white rounded-lg px-4 py-2">
+                          <p className="text-sm whitespace-pre-wrap">{content}</p>
+                        </div>
+                      </div>
+                    );
+                  } else if (isError) {
+                    content = part.replace(/^Erreur:\s*/, '').trim();
+                    return (
+                      <div key={index} className="flex justify-start">
+                        <div className="max-w-[80%] bg-red-50 border border-red-200 rounded-lg px-4 py-2">
+                          <p className="text-sm text-red-800 whitespace-pre-wrap">{content}</p>
+                        </div>
+                      </div>
+                    );
+                  } else if (isIA) {
+                    content = part.replace(/^IA:\s*/, '').trim();
+                    return (
+                      <div key={index} className="flex justify-start">
+                        <div className="max-w-[80%] bg-white border border-gray-200 rounded-lg px-4 py-2 shadow-sm">
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{content}</p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
+              </div>
+            )}
+
+            {isAnalyzing && (
+              <div className="flex justify-start">
+                <div className="bg-white border border-gray-200 rounded-lg px-4 py-2 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+                    <span className="text-sm text-gray-600">L'IA analyse...</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input du chat */}
+          <div className="border-t border-gray-200 p-4 bg-white rounded-b-2xl">
+            <form onSubmit={handleAnalyze} className="flex gap-2">
+              <input
+                type="text"
+                value={analysisQuery}
+                onChange={(e) => setAnalysisQuery(e.target.value)}
+                placeholder="Posez une question..."
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                disabled={isAnalyzing}
+              />
+              <button
+                type="submit"
+                disabled={!analysisQuery.trim() || isAnalyzing}
+                className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all text-sm"
+              >
+                {isAnalyzing ? '...' : 'Envoyer'}
+              </button>
+            </form>
+          </div>
         </div>
+        )}
       </div>
 
-      {/* Input Area */}
-      <div className="bg-white border-t border-gray-200">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <form onSubmit={handleSendMessage} className="flex gap-2">
-            <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              placeholder="Tapez votre message..."
-              disabled={isSending}
-              className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
-            />
-            <button
-              type="submit"
-              disabled={!inputMessage.trim() || isSending}
-              className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-            >
-              {isSending ? '...' : 'Envoyer'}
-            </button>
-          </form>
+      {/* Contenu principal - Tout sur une page */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 pb-24">
+        
+
+
+        {/* Section: Chiffre d'Affaires */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold text-gray-900">Chiffre d'Affaires réalisé à l'année</h2>
+            {loadingData && <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"></div>}
+          </div>
+          
+
+          {/* Résumé */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-lg p-6">
+              <p className="text-sm text-gray-600 mb-1">CA Total</p>
+              <p className="text-3xl font-bold text-gray-900">{totalCA.toLocaleString('fr-FR')} €</p>
+            </div>
+            <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-6">
+              <p className="text-sm text-gray-600 mb-1">Mois avec CA</p>
+              <p className="text-3xl font-bold text-gray-900">{monthlyCA.length}</p>
+            </div>
+            <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-6">
+              <p className="text-sm text-gray-600 mb-1">Année</p>
+              <p className="text-3xl font-bold text-gray-900">{monthlyCA.length > 0 ? monthlyCA[0].year : new Date().getFullYear()}</p>
+            </div>
+          </div>
+
+          {/* Liste du CA par mois */}
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Chiffre d'affaires par mois</h3>
+            {loadingData ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+                <p className="mt-2 text-gray-600">Chargement...</p>
+              </div>
+            ) : monthlyCA.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <p>Aucune donnée disponible</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {monthlyCA.map((ca, index) => (
+                  <div key={index} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-semibold text-gray-900">{ca.monthName}</h4>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xl font-bold text-indigo-600">
+                          {ca.ca.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {monthlyCA.length > 0 && (
+                  <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border-2 border-indigo-200 rounded-lg p-4 mt-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-bold text-gray-900">Total {monthlyCA.length > 0 ? monthlyCA[0].year : new Date().getFullYear()}</h4>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-indigo-600">
+                          {totalCA.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+
+        {/* Section: Employés - Affichage */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">👥 Employés</h2>
+          {loadingData ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+              <p className="mt-2 text-gray-600">Chargement...</p>
+            </div>
+          ) : employees.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <p>Aucun employé disponible</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prénom</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Âge</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {employees.map((emp, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-gray-900 font-medium">{emp.nom}</td>
+                      <td className="px-4 py-3 text-gray-900">{emp.prenom}</td>
+                      <td className="px-4 py-3 text-right text-gray-900">{emp.age} ans</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="mt-4 text-sm text-gray-600">
+                <p><strong>Nombre total d'employés :</strong> {employees.length}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Section: Employeur - Affichage */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">👔 Employeur</h2>
+          {loadingData ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+              <p className="mt-2 text-gray-600">Chargement...</p>
+            </div>
+          ) : !employer ? (
+            <div className="text-center py-8 text-gray-500">
+              <p>Aucun employeur disponible</p>
+            </div>
+          ) : (
+            <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-6 border border-purple-200">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">Nom</p>
+                  <p className="text-lg font-semibold text-gray-900">{employer.nom}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">Prénom</p>
+                  <p className="text-lg font-semibold text-gray-900">{employer.prenom}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+      </main>
     </div>
   );
 };
 
-export default HorizonAIChat;
-
+export default HorizonAI;

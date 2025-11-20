@@ -75,6 +75,16 @@ const createIndexes = async (): Promise<void> => {
     // Index sur updatedAt pour le tri chronologique
     await conversationsCollection.createIndex({ updatedAt: -1 });
     
+    // Index pour le chiffre d'affaires
+    const caCollection = db.collection('chiffre_affaires');
+    await caCollection.createIndex({ year: 1, month: 1 }, { unique: true });
+    await caCollection.createIndex({ year: -1 });
+    
+    // Index pour les transactions
+    const transactionsCollection = db.collection('transactions');
+    await transactionsCollection.createIndex({ date: -1 });
+    await transactionsCollection.createIndex({ createdAt: -1 });
+    
     console.log('✅ Index MongoDB créés');
   } catch (error) {
     console.error('Erreur lors de la création des index:', error);

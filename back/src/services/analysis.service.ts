@@ -18,8 +18,21 @@ const callOpenRouterAPI = async (
     throw new Error('OPENROUTER_API_KEY n\'est pas définie dans les variables d\'environnement');
   }
 
-  const systemInstruction = `Tu es un assistant IA utile, amical et professionnel. 
-Réponds de manière claire et concise aux questions de l'utilisateur.`;
+  const systemInstruction = `Tu es un assistant IA spécialisé dans l'analyse du chiffre d'affaires d'entreprise, de la gestion des employés et des informations sur l'employeur.
+Tu aides les utilisateurs à comprendre leurs données financières, leurs transactions, leurs performances et leurs ressources humaines.
+Réponds de manière claire, professionnelle et concise.
+
+INFORMATIONS DISPONIBLES :
+- Chiffre d'affaires : Septembre 100k€, Octobre 10k€, Novembre 300k€ (total 410k€)
+- Employés : 4 employés (Martin Pierre 32 ans, Bernard Marie 28 ans, Dubois Thomas 35 ans, Laurent Sophie 30 ans)
+- Employeur : Dupont Jean
+- Nombre total de transactions : Variable selon les mois
+
+Tu peux répondre aux questions sur :
+- Le chiffre d'affaires (total, par mois, évolution)
+- Les employés (nombre, noms, âges, composition de l'équipe)
+- L'employeur (nom, prénom)
+- Les analyses et insights sur les performances de l'entreprise.`;
 
   // Construire les messages avec l'historique
   const messages: Array<{ role: string; content: string }> = [
