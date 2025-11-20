@@ -4,10 +4,11 @@
   "description": "Backend API pour Horizon AI Chat",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
+    "build": "npm install && tsc",
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only server.ts",
-    "serve": "npm run build && npm start"
+    "serve": "npm run build && npm start",
+    "postinstall": "npm run build"
   },
   "keywords": [
     "api",
